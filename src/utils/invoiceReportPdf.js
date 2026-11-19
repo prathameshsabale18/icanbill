@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import download from 'downloadjs';
 import { formatInvoiceDate, getInvoiceDateKey } from './invoiceDates';
-import { calculateItemAmount } from './calculations';
+import { calculateItemAmount, calculateGstBreakdown } from './calculations';
 
 export { getInvoiceDateKey } from './invoiceDates';
 
@@ -69,39 +69,56 @@ export const calculateInvoiceReportTotals = (invoice) => {
       ? subtotal + freight
       : Number(invoice.assessable_value) || subtotal + freight;
 
-  const gstin =
-    invoice.clients?.gst_no ||
-    invoice.client_gstin ||
-    invoice.clientGstin ||
-    '';
+  const hasNewTaxContext =
+    invoice.doc_type !== undefined ||
+    invoice.docType !== undefined ||
+    String(invoice.client_state_code ?? invoice.clientStateCode ?? '').trim() !== '';
 
-  const hasSavedGstRate =
-    invoice.gst_rate !== undefined &&
-    invoice.gst_rate !== null &&
-    Number.isFinite(Number(invoice.gst_rate));
-  const gstRate = hasSavedGstRate
-    ? Number(invoice.gst_rate)
-    : 18;
-  const shouldCalculateGst = hasSavedGstRate
-    ? gstRate > 0
-    : String(gstin).startsWith('27');
+  let cgst = 0;
+  let sgst = 0;
+  let igst = 0;
+  let totalTax = 0;
+  let grandTotal = 0;
 
-  const cgst = shouldCalculateGst
-    ? assessableValue * gstRate / 200
-    : 0;
+  if (hasNewTaxContext) {
+    const gst = calculateGstBreakdown(
+      assessableValue,
+      invoice.client_state_code ?? invoice.clientStateCode,
+      invoice.doc_type ?? invoice.docType ?? 'TAX_INVOICE',
+      invoice.gst_rate ?? 18
+    );
+    ({ cgst, sgst, igst, totalTax, grandTotal } = gst);
+  } else {
+    // Legacy records retain their previous calculation until migrated.
+    const gstin =
+      invoice.clients?.gst_no ||
+      invoice.client_gstin ||
+      invoice.clientGstin ||
+      '';
 
-  const sgst = shouldCalculateGst
-    ? assessableValue * gstRate / 200
-    : 0;
+    const hasSavedGstRate =
+      invoice.gst_rate !== undefined &&
+      invoice.gst_rate !== null &&
+      Number.isFinite(Number(invoice.gst_rate));
+    const gstRate = hasSavedGstRate
+      ? Number(invoice.gst_rate)
+      : 18;
+    const shouldCalculateGst = hasSavedGstRate
+      ? gstRate > 0
+      : String(gstin).startsWith('27');
 
-  const igst = 0;
-
-  const totalTax =
-    cgst + sgst + igst;
-
-  const grandTotal = Math.round(
-    (assessableValue + totalTax) * 100
-  ) / 100;
+    cgst = shouldCalculateGst
+      ? assessableValue * gstRate / 200
+      : 0;
+    sgst = shouldCalculateGst
+      ? assessableValue * gstRate / 200
+      : 0;
+    igst = 0;
+    totalTax = cgst + sgst + igst;
+    grandTotal = Math.round(
+      (assessableValue + totalTax) * 100
+    ) / 100;
+  }
 
   return {
     subtotal,
@@ -219,15 +236,16 @@ export async function downloadInvoiceReportPDF(
    * so long client names have enough room.
    */
   const columns = [
-    { key: 'invoice', label: 'Invoice No.', width: 72 },
-    { key: 'date', label: 'Date', width: 58 },
-    { key: 'client', label: 'Client', width: 160 },
-    { key: 'gst', label: 'GST No.', width: 97 },
-    { key: 'products', label: 'Products', width: 100 },
-    { key: 'amount', label: 'Assessed', width: 65 },
-    { key: 'cgst', label: 'CGST', width: 52 },
-    { key: 'sgst', label: 'SGST', width: 52 },
-    { key: 'grandTotal', label: 'Grand Total', width: 55 },
+    { key: 'invoice', label: 'Invoice No.', width: 68 },
+    { key: 'date', label: 'Date', width: 52 },
+    { key: 'client', label: 'Client', width: 140 },
+    { key: 'gst', label: 'GST No.', width: 85 },
+    { key: 'products', label: 'Products', width: 90 },
+    { key: 'amount', label: 'Assessed', width: 60 },
+    { key: 'cgst', label: 'CGST', width: 48 },
+    { key: 'sgst', label: 'SGST', width: 48 },
+    { key: 'igst', label: 'IGST', width: 48 },
+    { key: 'grandTotal', label: 'Grand Total', width: 62 },
     { key: 'status', label: 'Status', width: 60 },
   ];
 
@@ -405,6 +423,9 @@ export async function downloadInvoiceReportPDF(
         totals.sgst +=
           row.totals.sgst;
 
+        totals.igst +=
+          row.totals.igst;
+
         totals.grandTotal +=
           row.totals.grandTotal;
 
@@ -414,6 +435,7 @@ export async function downloadInvoiceReportPDF(
         assessableValue: 0,
         cgst: 0,
         sgst: 0,
+        igst: 0,
         grandTotal: 0,
       }
     );
@@ -610,6 +632,11 @@ export async function downloadInvoiceReportPDF(
           totals.sgst
         ),
 
+      igst:
+        formatMoney(
+          totals.igst
+        ),
+
       grandTotal:
         formatMoney(
           totals.grandTotal
@@ -625,7 +652,7 @@ export async function downloadInvoiceReportPDF(
         values.client,
         regularFont,
         6.4,
-        152,
+        132,
         2
       );
 
@@ -634,7 +661,7 @@ export async function downloadInvoiceReportPDF(
         values.products,
         regularFont,
         6.4,
-        92,
+        82,
         3
       );
 
@@ -881,10 +908,17 @@ export async function downloadInvoiceReportPDF(
       ),
     ],
     [
+      'IGST',
+      formatMoney(
+        reportTotals.igst
+      ),
+    ],
+    [
       'Total GST',
       formatMoney(
         reportTotals.cgst +
-          reportTotals.sgst
+          reportTotals.sgst +
+          reportTotals.igst
       ),
     ],
     [

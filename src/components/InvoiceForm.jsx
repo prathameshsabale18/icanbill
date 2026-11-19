@@ -11,7 +11,7 @@ import {
 import AIExtractor from './AIExtractor';
 import { MultiProductDropdown } from './MultiProductDropdown';
 import { localData } from '../localDataClient';
-import { calculateItemAmount } from '../utils/calculations';
+import { calculateItemAmount, calculateGstBreakdown } from '../utils/calculations';
 import { clientGroupKey } from '../utils/clientIdentity';
 
 // ============================================================
@@ -56,7 +56,7 @@ function formatTotalSqft(item) {
       : '';
   }
 
-  if (per === 'job' && !(Number(quantityValue) > 0)) {
+  if (per === 'job' && !(Number(item.quantity) > 0)) {
     return 'Service';
   }
 
@@ -71,7 +71,8 @@ export default function InvoiceForm({
   invoiceData,
   setInvoiceData,
   items,
-  setItems
+  setItems,
+  showGstBreakdown = false
 }) {
   const [
     clientPresets,
@@ -147,8 +148,18 @@ export default function InvoiceForm({
       invoiceData.freight
     ) || 0;
 
+  const assessableValue = itemsTotal + freightVal;
+  const gstBreakdown = showGstBreakdown
+    ? calculateGstBreakdown(
+        assessableValue,
+        invoiceData.clientStateCode,
+        invoiceData.docType,
+        18
+      )
+    : { cgst: 0, sgst: 0, igst: 0, totalTax: 0 };
+
   const grandTotal =
-    itemsTotal + freightVal;
+    assessableValue + gstBreakdown.totalTax;
 
   // ==========================================================
   // SYNC GRAND TOTAL
@@ -257,6 +268,16 @@ export default function InvoiceForm({
 
         clientAddress:
           selected.address ||
+          '',
+
+        clientState:
+          selected.state ||
+          selected.client_state ||
+          '',
+
+        clientStateCode:
+          selected.state_code ||
+          selected.client_state_code ||
           ''
       }));
     }
@@ -1169,26 +1190,51 @@ export default function InvoiceForm({
 
         </div>
 
-        {/* GRAND TOTAL */}
+        {/* GST SUMMARY (enabled only on the separate New Invoice page) */}
+        {showGstBreakdown && (
+          <div
+            style={{
+              padding: '12px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: '5px',
+              borderTop: '1px solid #eee',
+              background: '#fafafa',
+              fontSize: '14px'
+            }}
+          >
+            <div>Assessable Value: ₹{assessableValue.toFixed(2)}</div>
+            {invoiceData.docType === 'DC_CHALLAN' ? (
+              <div>GST: ₹0.00 (Delivery Challan)</div>
+            ) : /^\d{2}$/.test(String(invoiceData.clientStateCode || '').trim()) ? (
+              String(invoiceData.clientStateCode).trim() === '27' ? (
+                <>
+                  <div>CGST (9%): ₹{gstBreakdown.cgst.toFixed(2)}</div>
+                  <div>SGST (9%): ₹{gstBreakdown.sgst.toFixed(2)}</div>
+                </>
+              ) : (
+                <div>IGST (18%): ₹{gstBreakdown.igst.toFixed(2)}</div>
+              )
+            ) : (
+              <div style={{ color: '#a16207' }}>Enter a valid two-digit customer state code to calculate GST</div>
+            )}
+          </div>
+        )}
 
+        {/* GRAND TOTAL */}
         <div
           style={{
-            padding:
-              '12px 20px',
+            padding: '12px 20px',
             display: 'flex',
-            justifyContent:
-              'flex-end',
-            borderTop:
-              '1px solid #eee',
-            background:
-              '#fafafa',
+            justifyContent: 'flex-end',
+            borderTop: '1px solid #eee',
+            background: '#fafafa',
             fontWeight: 'bold',
             fontSize: '15px'
           }}
         >
-          Grand Total:
-          ₹
-          {grandTotal.toFixed(2)}
+          Grand Total: ₹{grandTotal.toFixed(2)}
         </div>
 
       </div>

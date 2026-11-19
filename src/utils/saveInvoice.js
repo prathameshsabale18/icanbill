@@ -52,11 +52,23 @@ export async function saveInvoiceLocally(invoiceData, items, options = {}) {
       throw new Error('Enter a valid invoice date in DD/MM/YYYY format.');
     }
 
+    const hasNewTaxContext =
+      invoiceData.docType !== undefined ||
+      invoiceData.doc_type !== undefined ||
+      String(invoiceData.clientStateCode ?? invoiceData.client_state_code ?? '').trim() !== '';
+
+    const defaultGstRate = hasNewTaxContext
+      ? (invoiceData.docType === 'DC_CHALLAN' ? 0 : 18)
+      : null;
+
     const calculated = calculateInvoiceReportTotals({
       items,
       freight,
       client_gstin: invoiceData.clientGstin,
-      gst_rate: invoiceData.gstRate,
+      gst_rate: invoiceData.gstRate ?? defaultGstRate,
+      client_state: invoiceData.clientState || invoiceData.client_state || '',
+      client_state_code: invoiceData.clientStateCode ?? invoiceData.client_state_code,
+      doc_type: invoiceData.docType ?? invoiceData.doc_type,
     });
     const enteredInvoiceNo = String(invoiceData.invoiceNo || '').trim();
     const requestedStatus = String(invoiceData.status || 'Pending').trim();
@@ -130,6 +142,9 @@ export async function saveInvoiceLocally(invoiceData, items, options = {}) {
         client_address: invoiceData.clientAddress || invoiceData.client_address || '',
         client_email: invoiceData.clientEmail || invoiceData.client_email || '',
         client_gstin: invoiceData.clientGstin || invoiceData.client_gstin || '',
+        client_state: invoiceData.clientState || invoiceData.client_state || '',
+        client_state_code: invoiceData.clientStateCode ?? invoiceData.client_state_code,
+        doc_type: invoiceData.docType ?? invoiceData.doc_type,
         po_no: invoiceData.poNo || invoiceData.po_no || '',
         po_date: invoiceData.poDate || invoiceData.po_date || '',
         purchase_order_id: invoiceData.purchaseOrderId ?? invoiceData.purchase_order_id ?? null,
@@ -140,7 +155,9 @@ export async function saveInvoiceLocally(invoiceData, items, options = {}) {
         amount_paid: amountPaid,
         payment_method: invoiceData.paymentMethod || invoiceData.payment_method || '',
         status,
-        gst_rate: invoiceData.gstRate === undefined ? null : Number(invoiceData.gstRate),
+        gst_rate: invoiceData.gstRate === undefined || invoiceData.gstRate === null
+          ? defaultGstRate
+          : Number(invoiceData.gstRate),
         subtotal: calculated.subtotal,
         cgst: calculated.cgst,
         sgst: calculated.sgst,

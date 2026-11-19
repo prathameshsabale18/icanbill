@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import InvoiceForm, { calculateItemAmount } from '../components/InvoiceForm';
+import InvoiceForm from '../components/InvoiceForm';
 import { saveInvoiceLocally } from '../utils/saveInvoice';
 import { getTodayInvoiceDate } from '../utils/invoiceDates';
 import { useNavigate } from 'react-router-dom';
@@ -19,7 +19,8 @@ export default function NewInvoice() {
     clientStateCode: '',
     clientVendorCode: '',
     status: 'Pending',
-    docType: 'TAX_INVOICE' // 1. Added docType to state (Default: Tax Invoice)
+    docType: 'TAX_INVOICE',
+    gstRate: 18
   });
 
   const [items, setItems] = useState([
@@ -29,25 +30,20 @@ export default function NewInvoice() {
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
+    const isChallan = invoiceData.docType === 'DC_CHALLAN';
+    const stateCode = String(invoiceData.clientStateCode || '').trim();
+
+    if (!isChallan && !/^\d{2}$/.test(stateCode)) {
+      alert('Enter the customer place-of-supply state code (two digits) before saving the tax invoice.');
+      return;
+    }
+
     setSaving(true);
     try {
-      const itemsTotal = items.reduce((acc, item) => acc + calculateItemAmount(item), 0);
-      const freightVal = parseFloat(invoiceData.freight) || 0;
-      const subtotal = itemsTotal + freightVal;
-
-      // 2. Conditional GST Logic: Skip tax calculations if docType is DC_CHALLAN
-      const isChallan = invoiceData.docType === 'DC_CHALLAN';
-
-      const totals = {
-        subtotal: subtotal,
-        cgst: isChallan ? 0 : (invoiceData.cgst || 0),
-        sgst: isChallan ? 0 : (invoiceData.sgst || 0),
-        igst: isChallan ? 0 : (invoiceData.igst || 0),
-        grandTotal: isChallan ? subtotal : (subtotal + (invoiceData.taxAmount || 0))
-      };
-
-      // 3. Save invoiceData along with docType
-      const result = await saveInvoiceLocally(invoiceData, items, totals);
+      const result = await saveInvoiceLocally(
+        { ...invoiceData, gstRate: isChallan ? 0 : 18 },
+        items
+      );
 
       if (result.success) {
         alert(`${invoiceData.docType === 'DC_CHALLAN' ? 'Delivery Challan' : 'Invoice'} #${result.invoiceNo} saved successfully!`);
@@ -88,6 +84,7 @@ export default function NewInvoice() {
       </div>
 
       <InvoiceForm
+        showGstBreakdown
         invoiceData={invoiceData}
         setInvoiceData={setInvoiceData}
         items={items}

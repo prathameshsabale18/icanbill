@@ -72,7 +72,6 @@ export function calculateTotals(items = [], clientGstin = '', freight = 0) {
     grandTotal
   };
 }
-
 export function numberToWords(num) {
   const roundedNum = Math.round(Number(num) || 0);
   if (roundedNum === 0) return 'Zero';
@@ -101,4 +100,65 @@ export function numberToWords(num) {
   str += (n[5] != 0) ? ((str != '') ? 'and ' : '') + inWords(Number(n[5])) : '';
 
   return str.trim() + ' Only';
+}
+
+// Shared GST calculation for the separate New Invoice flow.
+// Seller is registered in Maharashtra (state code 27); current invoice rate is 18%.
+export function calculateGstBreakdown(
+  assessableValue,
+  clientStateCode,
+  docType = 'TAX_INVOICE',
+  gstRate = 18
+) {
+  const amount = Number(assessableValue) || 0;
+
+  if (docType === 'DC_CHALLAN') {
+    return {
+      cgst: 0,
+      sgst: 0,
+      igst: 0,
+      totalTax: 0,
+      grandTotal: Math.round(amount * 100) / 100,
+      validStateCode: true,
+    };
+  }
+
+  const stateCode = String(clientStateCode ?? '').trim();
+  if (!/^\d{2}$/.test(stateCode)) {
+    return {
+      cgst: 0,
+      sgst: 0,
+      igst: 0,
+      totalTax: 0,
+      grandTotal: Math.round(amount * 100) / 100,
+      validStateCode: false,
+    };
+  }
+
+  const rate = Number(gstRate);
+  if (!Number.isFinite(rate) || rate < 0) {
+    throw new Error('GST rate must be a valid non-negative number.');
+  }
+
+  const roundMoney = value => Math.round((value + Number.EPSILON) * 100) / 100;
+  let cgst = 0;
+  let sgst = 0;
+  let igst = 0;
+
+  if (stateCode === '27') {
+    cgst = roundMoney(amount * rate / 200);
+    sgst = roundMoney(amount * rate / 200);
+  } else {
+    igst = roundMoney(amount * rate / 100);
+  }
+
+  const totalTax = roundMoney(cgst + sgst + igst);
+  return {
+    cgst,
+    sgst,
+    igst,
+    totalTax,
+    grandTotal: roundMoney(amount + totalTax),
+    validStateCode: true,
+  };
 }
