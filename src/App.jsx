@@ -4,15 +4,20 @@ import Dashboard from './components/Dashboard';
 import OverviewDashboard from './components/OverviewDashboard';
 import ClientsDashboard from './components/ClientsDashboard';
 import WorkspaceSidebar from './components/WorkspaceSidebar';
+import WorkspaceSettings from './components/WorkspaceSettings';
+import RetailBilling from './components/RetailBilling';
+import PurchaseOrdersDashboard from './components/PurchaseOrdersDashboard';
+import PaymentsDashboard from './components/PaymentsDashboard';
+import QuotationsDashboard from './components/QuotationsDashboard';
+import OrganizerDashboard from './components/OrganizerDashboard';
 import { calculateTotals } from './utils/calculations';
 import { stampInvoice } from './utils/pdfStamper';
 import { numberToWords } from './utils/calculations';
-import { saveInvoiceToDatabase } from './utils/saveInvoice';
+import { saveInvoiceLocally } from './utils/saveInvoice';
 import { convertPdfToJpeg } from './utils/invoiceImage';
 import { saveInvoicePdf } from './utils/invoicePdfStorage';
 import { getTodayInvoiceDate } from './utils/invoiceDates';
-import { supabase } from './supabaseClient';
-import Login from './components/Login';
+import { localData } from './localDataClient';
 import download from 'downloadjs';
 import {
   Download,
@@ -21,26 +26,25 @@ import {
   Loader2,
   X,
   AlertCircle,
-  LogOut,
   Save
 } from 'lucide-react';
 
 const today = getTodayInvoiceDate();
-const INVOICE_SERIES_PREFIX = 'CC-2627-';
+const INVOICE_SERIES_PREFIX = 'INV-';
 
 const generateNextInvoiceNumber = async () => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await localData
       .from('invoices')
       .select('invoice_no');
 
     if (error) throw error;
 
-    let maxNo = 7560;
+    let maxNo = 0;
 
     if (data && data.length > 0) {
       data.forEach(row => {
-        const match = String(row.invoice_no || '').match(/^CC-2627-(\d+)$/);
+        const match = String(row.invoice_no || '').match(/^INV-(\d+)$/i);
         const num = match ? Number(match[1]) : 0;
 
         if (!Number.isNaN(num) && num > maxNo) {
@@ -49,17 +53,29 @@ const generateNextInvoiceNumber = async () => {
       });
     }
 
-    return `${INVOICE_SERIES_PREFIX}${maxNo + 1}`;
+    return `${INVOICE_SERIES_PREFIX}${String(maxNo + 1).padStart(4, '0')}`;
   } catch (err) {
-    console.error('Failed to fetch live sequence:', err);
-    return `${INVOICE_SERIES_PREFIX}7561`;
+    console.error('Failed to fetch the local invoice sequence:', err);
+    throw err;
   }
 };
 
-function InvoiceWorkspace({ role, onSignOut }) {
+function InvoiceWorkspace() {
+  const [workspaceMode, setWorkspaceMode] = useState(() => (
+    localStorage.getItem('workspace_mode') === 'retail' ? 'retail' : 'business'
+  ));
+  const [workspaceSetupRequired, setWorkspaceSetupRequired] = useState(
+    () => !['retail', 'business'].includes(localStorage.getItem('workspace_mode'))
+  );
   const [activeTab, setActiveTab] = useState(() => {
-    const savedTab = localStorage.getItem('canvas_active_tab');
-    return savedTab === 'dashboard' ? 'overview' : savedTab || 'overview';
+    const savedTab = localStorage.getItem('billing_mvp_active_tab');
+    const restoredTab = savedTab === 'dashboard' ? 'overview' : savedTab || 'overview';
+    const availableTabs = ['overview', 'user', 'clients', 'billing', 'payments', 'organizer', 'generator', 'settings', 'retail', 'purchase-orders', 'quotations'];
+    if (!availableTabs.includes(restoredTab)) return 'overview';
+    if (workspaceMode === 'business' && restoredTab === 'retail') return 'overview';
+    if (workspaceMode === 'retail' && restoredTab === 'purchase-orders') return 'overview';
+    if (workspaceMode === 'retail' && restoredTab === 'quotations') return 'overview';
+    return restoredTab;
   });
 
   const isChallan = false;
@@ -84,11 +100,147 @@ function InvoiceWorkspace({ role, onSignOut }) {
 
   const navigateToTab = (tab) => {
     setActiveTab(tab);
-    localStorage.setItem('canvas_active_tab', tab);
+    localStorage.setItem('billing_mvp_active_tab', tab);
+  };
+
+  const changeWorkspaceMode = mode => {
+    if (!['retail', 'business'].includes(mode)) {
+      throw new Error(`Unknown workspace mode: ${mode}`);
+    }
+    localStorage.setItem('workspace_mode', mode);
+    setWorkspaceMode(mode);
+    setWorkspaceSetupRequired(false);
+    if (
+      (mode === 'business' && activeTab === 'retail') ||
+      (mode === 'retail' && ['purchase-orders', 'quotations'].includes(activeTab))
+    ) {
+      navigateToTab('overview');
+    }
+  };
+
+  const handleCreateInvoiceFromPurchaseOrder = async purchaseOrder => {
+    if (!purchaseOrder || purchaseOrder.party_type === 'supplier') {
+      throw new Error('Only customer purchase orders can be converted to invoices.');
+    }
+    if (purchaseOrder.invoice_id) {
+      throw new Error('An invoice has already been created for this purchase order.');
+    }
+    const clientQuery = localData.from('clients').select('*');
+    const clientResult = purchaseOrder.client_id
+      ? await clientQuery.eq('id', purchaseOrder.client_id).maybeSingle()
+      : await clientQuery.eq('client_name', purchaseOrder.client_name).maybeSingle();
+    if (clientResult.error) throw new Error(clientResult.error.message);
+    const client = clientResult.data;
+    const invoiceItems = (purchaseOrder.items || []).map(item => {
+      const details = [item.dimensions, item.specifications].filter(Boolean).join(' — ');
+      return {
+        description: [item.description, details].filter(Boolean).join('\n'),
+        hsn: '',
+        quantity: Number(item.quantity) || 1,
+        rate: Number(item.unit_price) || 0,
+        baseRate: Number(item.unit_price) || 0,
+        per: 'Nos',
+      };
+    });
+    if (!invoiceItems.length) {
+      throw new Error('This purchase order has no items to invoice.');
+    }
+    setInvoiceData(prev => ({
+      ...prev,
+      clientId: client?.id ?? purchaseOrder.client_id ?? null,
+      clientName: client?.client_name || purchaseOrder.client_name || purchaseOrder.party_name || '',
+      clientAddress: client?.address || '',
+      clientGstin: client?.gst_no || '',
+      clientEmail: client?.email || '',
+      poNo: purchaseOrder.po_no || '',
+      poDate: purchaseOrder.po_date || purchaseOrder.date || '',
+      purchaseOrderId: purchaseOrder.id,
+    }));
+    setItems(invoiceItems);
+    setError(null);
+    navigateToTab('generator');
+  };
+
+  const handleCreateInvoiceFromQuotation = async quotation => {
+    if (!quotation || quotation.invoice_id || quotation.status !== 'Approved') {
+      throw new Error('Only approved quotations without an existing invoice can be converted.');
+    }
+    const clientResult = await localData
+      .from('clients')
+      .select('*')
+      .eq('id', quotation.client_id)
+      .maybeSingle();
+    if (clientResult.error) throw new Error(clientResult.error.message);
+    const client = clientResult.data;
+    const invoiceItems = (quotation.items || []).map(item => {
+      const details = [item.dimensions, item.specifications].filter(Boolean).join(' — ');
+      return {
+        description: [item.description, details].filter(Boolean).join('\n'),
+        hsn: '',
+        quantity: Number(item.quantity) || 1,
+        rate: Number(item.unit_price) || 0,
+        baseRate: Number(item.unit_price) || 0,
+        per: 'Nos',
+      };
+    });
+    if (!invoiceItems.length) throw new Error('This quotation has no items to invoice.');
+    setInvoiceData(prev => ({
+      ...prev,
+      clientId: client?.id ?? quotation.client_id ?? null,
+      clientName: client?.client_name || quotation.client_name || '',
+      clientAddress: client?.address || '',
+      clientGstin: client?.gst_no || '',
+      clientEmail: client?.email || '',
+      poNo: '',
+      poDate: '',
+      quotationId: quotation.id,
+    }));
+    setItems(invoiceItems);
+    setError(null);
+    navigateToTab('generator');
+  };
+
+  const handleRetailCheckout = async ({ invoiceData: saleData, items: saleItems }) => {
+    const stockChanges = saleItems.map(item => ({
+      productId: item.productId,
+      quantity: Number(item.quantity || 0),
+    }));
+    const savedInvoice = await saveInvoiceLocally(saleData, saleItems, {
+      stockChanges,
+    });
+    if (!savedInvoice?.success || !savedInvoice.invoiceId) {
+      return {
+        success: false,
+        error: savedInvoice?.error || 'Could not save the retail invoice.',
+      };
+    }
+
+    try {
+      const totals = {
+        ...calculateTotals(saleItems, saleData.clientGstin, saleData.freight),
+      };
+      totals.inWords = numberToWords(totals.grandTotal || 0);
+      const pdfBlob = await stampInvoice(
+        { ...saleData, invoiceNo: savedInvoice.invoiceNo },
+        totals,
+        'invoice',
+        'master',
+        'full'
+      );
+      await saveInvoicePdf(savedInvoice.invoiceId, pdfBlob);
+      return { success: true, invoiceNo: savedInvoice.invoiceNo };
+    } catch (pdfError) {
+      console.error('Retail sale was saved, but its PDF could not be generated:', pdfError);
+      return {
+        success: true,
+        invoiceNo: savedInvoice.invoiceNo,
+        warning: `Sale ${savedInvoice.invoiceNo} was saved and stock deducted, but its PDF could not be saved: ${pdfError.message}`,
+      };
+    }
   };
 
   const [invoiceData, setInvoiceData] = useState({
-    invoiceNo: 'CC-2627-7561',
+    invoiceNo: 'INV-0001',
     invoiceDate: today,
     poNo: '',
     poDate: '',
@@ -111,12 +263,16 @@ function InvoiceWorkspace({ role, onSignOut }) {
         setSavedInvoiceNo(null);
         setSavedInvoiceId(null);
 
-        const nextInvoiceNo = await generateNextInvoiceNumber();
+        try {
+          const nextInvoiceNo = await generateNextInvoiceNumber();
 
-        setInvoiceData(prev => ({
-          ...prev,
-          invoiceNo: nextInvoiceNo
-        }));
+          setInvoiceData(prev => ({
+            ...prev,
+            invoiceNo: nextInvoiceNo
+          }));
+        } catch (sequenceError) {
+          setError(sequenceError.message);
+        }
       }
     }
 
@@ -223,7 +379,7 @@ function InvoiceWorkspace({ role, onSignOut }) {
 
   // ---------------------------------------------------------
   // SAVE INVOICE
-  // Saves database record + canonical PDF.
+  // Saves a local record and its canonical PDF.
   // Does NOT download anything.
   // ---------------------------------------------------------
   const handleSave = async () => {
@@ -236,13 +392,13 @@ function InvoiceWorkspace({ role, onSignOut }) {
         return;
       }
 
-      const saveResult = await saveInvoiceToDatabase(
+      const saveResult = await saveInvoiceLocally(
         invoiceData,
         items
       );
 
-      if (!saveResult || !saveResult.success) {
-        throw new Error('Database save failed.');
+      if (!saveResult?.success) {
+        throw new Error(saveResult?.error || 'Local save failed.');
       }
 
       const confirmedInvoiceNo = saveResult.invoiceNo;
@@ -268,7 +424,7 @@ function InvoiceWorkspace({ role, onSignOut }) {
         'full'
       );
 
-      // Save canonical PDF to Supabase Storage.
+      // Save the canonical PDF in browser storage.
       await saveInvoicePdf(
         confirmedInvoiceId,
         pdfBlob
@@ -291,7 +447,7 @@ function InvoiceWorkspace({ role, onSignOut }) {
   // ---------------------------------------------------------
   // DOWNLOAD INVOICE
   // Generates and downloads only.
-  // Does NOT save to Supabase.
+  // Does not save a record.
   // ---------------------------------------------------------
   const handleDownload = async () => {
     setIsDownloading(true);
@@ -348,7 +504,7 @@ function InvoiceWorkspace({ role, onSignOut }) {
           : 'application/pdf';
 
       const filename =
-        `CC-${isChallan ? 'Challan' : 'Invoice'}-${invoiceNo}.${extension}`;
+        `iCanBill-${isChallan ? 'Challan' : 'Invoice'}-${invoiceNo}.${extension}`;
 
       download(
         blob,
@@ -372,6 +528,19 @@ function InvoiceWorkspace({ role, onSignOut }) {
   const docLabel = isChallan
     ? 'Challan'
     : 'Invoice';
+  const activePageLabel = {
+    overview: 'Overview',
+    user: 'Overview',
+    clients: 'Clients',
+    billing: 'Billing',
+    generator: 'Invoice generator',
+    settings: 'Settings',
+    retail: 'Retail billing',
+    'purchase-orders': 'Purchase orders',
+    payments: 'Payments',
+    organizer: 'Organizer',
+    quotations: 'Quotations',
+  }[activeTab] || 'Workspace';
 
   return (
     <div
@@ -380,7 +549,7 @@ function InvoiceWorkspace({ role, onSignOut }) {
         width: '100vw',
         maxWidth: '100%',
         margin: 0,
-        paddingTop: '60px',
+        paddingTop: '68px',
         boxSizing: 'border-box',
         overflowX: 'hidden'
       }}
@@ -392,50 +561,21 @@ function InvoiceWorkspace({ role, onSignOut }) {
           boxSizing: 'border-box'
         }}
       >
-        <div className="navbar-brand">
-
-          <div
-            className="navbar-logo"
-            style={{
-              background: '#ffffff',
-              padding: '3px',
-              overflow: 'hidden'
-            }}
-          >
-            <img
-              src="/logo.svg"
-              alt="Canvas Creation logo"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                transform: 'scale(2.35)'
-              }}
-            />
-          </div>
-
+        <div className="workspace-topbar-context">
+          <span className="workspace-topbar-mark" aria-hidden="true" />
           <div>
-            <div className="navbar-title">
-              Canvas Creation
-            </div>
-
-            <div className="navbar-subtitle">
-              Invoice Automation Engine · {role}
-            </div>
+            <span className="workspace-topbar-label">
+              {workspaceMode === 'retail' ? 'RETAIL WORKSPACE' : 'BUSINESS WORKSPACE'}
+            </span>
+            <strong>{activePageLabel}</strong>
           </div>
-
         </div>
 
-        {/* TOP RIGHT HEADER BUTTONS */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-          }}
-        >
-
-          {/* SAVE INVOICE */}
+        <div className="workspace-topbar-actions">
+          <span className="workspace-topbar-local">
+            <span />
+            Local workspace
+          </span>
           {activeTab === 'generator' && (
             <button
               className="btn btn-sm"
@@ -446,9 +586,8 @@ function InvoiceWorkspace({ role, onSignOut }) {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '7px',
-                border: '1px solid var(--border)',
                 borderRadius: '9px',
-                padding: '8px 14px'
+                padding: '9px 14px'
               }}
             >
               {isDownloading ? (
@@ -471,25 +610,6 @@ function InvoiceWorkspace({ role, onSignOut }) {
               )}
             </button>
           )}
-
-          {/* SIGN OUT */}
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={onSignOut}
-            title="Sign out"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '7px',
-              border: '1px solid var(--border)',
-              borderRadius: '9px',
-              padding: '8px 12px'
-            }}
-          >
-            <LogOut size={15} />
-            <span>Sign out</span>
-          </button>
-
         </div>
       </nav>
 
@@ -523,6 +643,45 @@ function InvoiceWorkspace({ role, onSignOut }) {
           </div>
         )}
 
+        {workspaceSetupRequired && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workspace-setup-title"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1200,
+              display: 'grid',
+              placeItems: 'center',
+              padding: '20px',
+              background: 'rgba(20, 35, 48, .58)',
+            }}
+          >
+            <section style={{ width: 'min(560px, 100%)', padding: '28px', borderRadius: '16px', background: '#fff', boxShadow: '0 24px 70px rgba(0,0,0,.24)' }}>
+              <span style={{ color: '#087d73', fontSize: '10px', fontWeight: 800, letterSpacing: '1px' }}>WELCOME TO ICANBILL</span>
+              <h1 id="workspace-setup-title" style={{ margin: '8px 0', color: '#172033', fontSize: '25px' }}>Choose your workspace</h1>
+              <p style={{ margin: '0 0 18px', color: '#687486', fontSize: '13px' }}>Pick the workspace that best fits your business. You can switch modes later in Settings.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+                {[
+                  { id: 'retail', title: 'Retail', description: 'Barcode checkout, catalog, and stock.' },
+                  { id: 'business', title: 'Business', description: 'Customer POs, orders, and invoices.' },
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => changeWorkspaceMode(mode.id)}
+                    style={{ padding: '18px', border: '1px solid #dfe8e8', borderRadius: '12px', background: '#f9fcfb', color: '#26364a', textAlign: 'left', cursor: 'pointer' }}
+                  >
+                    <strong style={{ display: 'block', marginBottom: '6px', fontSize: '15px' }}>{mode.title} Mode</strong>
+                    <span style={{ color: '#718091', fontSize: '12px' }}>{mode.description}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
         {activeTab === 'overview' ||
         activeTab === 'user' ? (
 
@@ -543,12 +702,14 @@ function InvoiceWorkspace({ role, onSignOut }) {
             }
             onNavigate={navigateToTab}
             activeView={activeTab}
+            workspaceMode={workspaceMode}
           />
 
         ) : activeTab === 'clients' ? (
 
           <ClientsDashboard
             onNavigate={navigateToTab}
+            workspaceMode={workspaceMode}
             onNewInvoice={(client, order) => {
               setInvoiceData(prev => ({
                 ...prev,
@@ -577,6 +738,53 @@ function InvoiceWorkspace({ role, onSignOut }) {
               navigateToTab('generator')
             }
             onNavigate={navigateToTab}
+            workspaceMode={workspaceMode}
+          />
+
+        ) : activeTab === 'settings' ? (
+
+          <WorkspaceSettings
+            workspaceMode={workspaceMode}
+            onWorkspaceModeChange={changeWorkspaceMode}
+            onNavigate={navigateToTab}
+          />
+
+        ) : activeTab === 'retail' ? (
+
+          <RetailBilling
+            onNavigate={navigateToTab}
+            workspaceMode={workspaceMode}
+            onCheckout={handleRetailCheckout}
+          />
+
+        ) : activeTab === 'purchase-orders' ? (
+
+          <PurchaseOrdersDashboard
+            onCreateInvoice={handleCreateInvoiceFromPurchaseOrder}
+            onNavigate={navigateToTab}
+            workspaceMode={workspaceMode}
+          />
+
+        ) : activeTab === 'payments' ? (
+
+          <PaymentsDashboard
+            onNavigate={navigateToTab}
+            workspaceMode={workspaceMode}
+          />
+
+        ) : activeTab === 'organizer' ? (
+
+          <OrganizerDashboard
+            onNavigate={navigateToTab}
+            workspaceMode={workspaceMode}
+          />
+
+        ) : activeTab === 'quotations' ? (
+
+          <QuotationsDashboard
+            onNavigate={navigateToTab}
+            workspaceMode={workspaceMode}
+            onCreateInvoice={handleCreateInvoiceFromQuotation}
           />
 
         ) : (
@@ -593,6 +801,7 @@ function InvoiceWorkspace({ role, onSignOut }) {
             <WorkspaceSidebar
               activeView="generator"
               onNavigate={navigateToTab}
+              workspaceMode={workspaceMode}
             />
 
             <div
@@ -959,88 +1168,5 @@ function InvoiceWorkspace({ role, onSignOut }) {
 }
 
 export default function App() {
-  const [session, setSession] = useState(undefined);
-  const [role, setRole] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadSession() {
-      const { data } =
-        await supabase.auth.getSession();
-
-      if (!active) return;
-
-      if (!data.session) {
-        setSession(null);
-        return;
-      }
-
-      const {
-        data: profile,
-        error
-      } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.session.user.id)
-        .single();
-
-      if (!active) return;
-
-      if (error || !profile?.role) {
-        await supabase.auth.signOut();
-        setSession(null);
-        return;
-      }
-
-      setRole(profile.role);
-      setSession(data.session);
-    }
-
-    loadSession();
-
-    const {
-      data: listener
-    } = supabase.auth.onAuthStateChange(
-      (event) => {
-        if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setRole(null);
-        }
-      }
-    );
-
-    return () => {
-      active = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  if (session === undefined) {
-    return (
-      <div className="auth-loading">
-        Loading secure workspace...
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <Login
-        onLoginSuccess={(nextRole) => {
-          setRole(nextRole);
-          setSession({ user: true });
-        }}
-      />
-    );
-  }
-
-  return (
-    <InvoiceWorkspace
-      role={role}
-      onSignOut={() =>
-        supabase.auth.signOut()
-      }
-    />
-  );
+  return <InvoiceWorkspace />;
 }

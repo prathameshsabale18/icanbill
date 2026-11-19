@@ -10,7 +10,7 @@ import {
 
 import AIExtractor from './AIExtractor';
 import { MultiProductDropdown } from './MultiProductDropdown';
-import { supabase } from '../supabaseClient';
+import { localData } from '../localDataClient';
 import { calculateItemAmount } from '../utils/calculations';
 import { clientGroupKey } from '../utils/clientIdentity';
 
@@ -95,7 +95,7 @@ export default function InvoiceForm({
         const {
           data,
           error
-        } = await supabase
+        } = await localData
           .from('clients')
           .select('*')
           .order(
@@ -407,7 +407,7 @@ export default function InvoiceForm({
             >
 
               <label>
-                Load Client from Database
+                Load saved client
               </label>
 
               <select
@@ -550,7 +550,7 @@ export default function InvoiceForm({
               <input
                 type="text"
                 className="form-control"
-                placeholder="Maharashtra"
+                placeholder="State or region"
                 value={
                   invoiceData.clientState ||
                   ''
@@ -679,7 +679,7 @@ export default function InvoiceForm({
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. Amcor Flexibles India Pvt Ltd"
+                placeholder="e.g. Acme Supplies"
                 value={
                   invoiceData.clientName ||
                   ''

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../supabaseClient';
+ import React, { useState, useEffect, useMemo } from 'react';
+import { localData } from '../localDataClient';
 import download from 'downloadjs';
 import {
   Trash2,
@@ -58,7 +58,8 @@ const editInputStyle = {
 
 export default function Dashboard({
   onNewInvoice,
-  onNavigate
+  onNavigate,
+  workspaceMode = 'business'
 }) {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,14 +104,14 @@ export default function Dashboard({
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await localData
         .from('invoices')
         .select('*, clients(*)')
         .order('id', { ascending: false });
 
       if (error) {
         console.error(
-          'Supabase fetch error:',
+          'Local invoice fetch error:',
           error.message
         );
       } else {
@@ -121,7 +122,7 @@ export default function Dashboard({
             const {
               data: invoiceItems,
               error: itemsError
-            } = await supabase
+            } = await localData
               .from('invoice_items')
               .select('*')
               .eq('invoice_id', invoice.id);
@@ -162,7 +163,7 @@ export default function Dashboard({
 
             if (valuesChanged) {
               const { error: syncError } =
-                await supabase
+                await localData
                   .from('invoices')
                   .update({
                     amount: calculated.grandTotal,
@@ -221,7 +222,7 @@ export default function Dashboard({
     setLoadingDetails(true);
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await localData
         .from('invoice_items')
         .select('*')
         .eq('invoice_id', invoice.id);
@@ -266,7 +267,7 @@ export default function Dashboard({
       )
     );
 
-    const { error } = await supabase
+    const { error } = await localData
       .from('invoices')
       .update({
         status: newStatus
@@ -305,12 +306,12 @@ export default function Dashboard({
       );
     }
 
-    await supabase
+    await localData
       .from('invoice_items')
       .delete()
       .eq('invoice_id', invoiceId);
 
-    const { error } = await supabase
+    const { error } = await localData
       .from('invoices')
       .delete()
       .eq('id', invoiceId);
@@ -344,7 +345,7 @@ export default function Dashboard({
 
       download(
         pdfBlob,
-        `CC-Invoice-${invoice.invoice_no || invoice.id}.pdf`,
+        `Invoice-${invoice.invoice_no || invoice.id}.pdf`,
         'application/pdf'
       );
 
@@ -365,7 +366,7 @@ export default function Dashboard({
       ? inv.items
       : [];
 
-    const { data } = await supabase
+    const { data } = await localData
       .from('invoice_items')
       .select('*')
       .eq('invoice_id', inv.id);
@@ -425,7 +426,7 @@ export default function Dashboard({
           freight: editFormData.freight,
         });
 
-      const { error } = await supabase
+      const { error } = await localData
         .from('invoices')
         .update({
           invoice_no:
@@ -467,7 +468,7 @@ export default function Dashboard({
         );
 
       } else {
-        await supabase
+        await localData
           .from('invoice_items')
           .delete()
           .eq(
@@ -480,7 +481,7 @@ export default function Dashboard({
         ) {
           const {
             error: itemError
-          } = await supabase
+          } = await localData
             .from('invoice_items')
             .insert(
               editFormData.items.map(
@@ -730,8 +731,6 @@ export default function Dashboard({
           let bValue;
 
           // Invoice number:
-          // CC-2627-7567 -> 7567
-          // CC-2627-7500 -> 7500
           if (
             sortConfig.key ===
             'invoice_no'
@@ -1113,6 +1112,7 @@ export default function Dashboard({
       <WorkspaceSidebar
         activeView="billing"
         onNavigate={onNavigate}
+        workspaceMode={workspaceMode}
       />
 
       <main
@@ -1233,7 +1233,7 @@ export default function Dashboard({
               </button>
 
               <div
-                title="Canvas Creation account"
+                title="iCanBill account"
                 style={{
                   width: '40px',
                   height: '40px',
@@ -1249,7 +1249,7 @@ export default function Dashboard({
                   color: '#334155'
                 }}
               >
-                CC
+                BW
               </div>
 
               <button
@@ -2868,7 +2868,7 @@ export default function Dashboard({
                       '4px'
                   }}
                 >
-                  Complete database form fields and line items
+                  Complete the invoice fields and line items
                 </p>
 
               </div>

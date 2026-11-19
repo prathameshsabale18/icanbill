@@ -3,7 +3,7 @@ import {
   LayoutDashboard, FileText, BarChart3, Wallet, Users, Settings, LogOut,
   Search, Bell, Plus, Trash2, Edit3, ArrowUpRight, CheckCircle2
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { localData } from '../localDataClient';
 import {
   formatInvoiceDate,
   getTodayInvoiceDate,
@@ -30,7 +30,7 @@ export default function Dashboard({ onViewChange }) {
 
   async function fetchInvoices() {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await localData
       .from('invoices')
       .select('*')
       .order('created_at', { ascending: false });
@@ -61,7 +61,7 @@ export default function Dashboard({ onViewChange }) {
     };
 
     if (editingId) {
-      const { error } = await supabase
+      const { error } = await localData
         .from('invoices')
         .update(payload)
         .eq('id', editingId);
@@ -72,7 +72,7 @@ export default function Dashboard({ onViewChange }) {
         fetchInvoices();
       }
     } else {
-      const { error } = await supabase
+      const { error } = await localData
         .from('invoices')
         .insert([payload]);
 
@@ -85,7 +85,7 @@ export default function Dashboard({ onViewChange }) {
   }
 
   async function handleDelete(id) {
-    const { error } = await supabase.from('invoices').delete().eq('id', id);
+    const { error } = await localData.from('invoices').delete().eq('id', id);
     if (!error) {
       setInvoices(invoices.filter(inv => inv.id !== id));
     }
@@ -264,7 +264,7 @@ export default function Dashboard({ onViewChange }) {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
             <h3 className="text-xl font-bold text-slate-900 mb-2">{editingId ? 'Edit Billing Record' : 'Add New Billing'}</h3>
-            <p className="text-xs text-slate-400 mb-6">Fill in the details below to persist changes to Supabase.</p>
+            <p className="text-xs text-slate-400 mb-6">Changes are saved in this browser.</p>
             <form onSubmit={handleSave} className="flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Invoice Number</label>
@@ -282,7 +282,7 @@ export default function Dashboard({ onViewChange }) {
                   type="text" required
                   value={formData.clientName}
                   onChange={e => setFormData({...formData, clientName: e.target.value})}
-                  placeholder="e.g. Amcor Flexibles"
+                  placeholder="e.g. Acme Supplies"
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>

@@ -301,7 +301,7 @@ export async function stampInvoice(
   ).toLowerCase();
 
   let templatePath =
-    '/templates/canvas_creation_master.pdf';
+    '/templates/invoice-master.pdf';
 
   let isChallan = false;
 
@@ -309,21 +309,21 @@ export async function stampInvoice(
     selectedType.includes('challan')
   ) {
     templatePath =
-      '/templates/DCCHALLAN.pdf';
+      '/templates/delivery-challan.pdf';
 
     isChallan = true;
   } else if (
     selectedType.includes('office')
   ) {
     templatePath =
-      '/templates/OFFICECOPYMASTER.pdf';
+      '/templates/invoice-office-copy.pdf';
 
     isChallan = false;
   } else {
     templatePath =
       templateVariant === 'print'
-        ? '/templates/canvas_creation_master_print.pdf'
-        : '/templates/canvas_creation_master.pdf';
+        ? '/templates/invoice-master-print.pdf'
+        : '/templates/invoice-master.pdf';
 
     isChallan = false;
   }

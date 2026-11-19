@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../supabaseClient';
+import { localData } from '../localDataClient';
 
 export function ProductSelectDropdown({ onSelectProduct }) {
   const [query, setQuery] = useState('');
@@ -11,7 +11,7 @@ export function ProductSelectDropdown({ onSelectProduct }) {
 
   useEffect(() => {
     async function fetchProducts() {
-      const { data, error } = await supabase
+      const { data, error } = await localData
         .from('products')
         .select('*')
         .order('product', { ascending: true });

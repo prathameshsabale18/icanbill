@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { localData } from '../localDataClient';
 
 export const INVOICE_PDF_BUCKET = 'invoice-pdfs';
 
@@ -12,7 +12,7 @@ export async function saveInvoicePdf(invoiceId, pdfBlob) {
   }
 
   const path = getInvoicePdfPath(invoiceId);
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await localData.storage
     .from(INVOICE_PDF_BUCKET)
     .upload(path, pdfBlob, {
       contentType: 'application/pdf',
@@ -23,7 +23,7 @@ export async function saveInvoicePdf(invoiceId, pdfBlob) {
     throw new Error(`PDF upload failed: ${uploadError.message}`);
   }
 
-  const { error: invoiceError } = await supabase
+  const { error: invoiceError } = await localData
     .from('invoices')
     .update({ pdf_storage_path: path })
     .eq('id', invoiceId);
@@ -38,7 +38,7 @@ export async function downloadSavedInvoicePdf(invoice) {
   const path = invoice?.pdf_storage_path;
   if (!path) throw new Error('This invoice does not have a saved PDF.');
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await localData.storage
     .from(INVOICE_PDF_BUCKET)
     .download(path);
 
@@ -50,7 +50,7 @@ export async function removeSavedInvoicePdf(invoice) {
   const path = invoice?.pdf_storage_path;
   if (!path) return;
 
-  const { error } = await supabase.storage
+  const { error } = await localData.storage
     .from(INVOICE_PDF_BUCKET)
     .remove([path]);
 

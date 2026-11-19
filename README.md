@@ -1,16 +1,26 @@
-# React + Vite
+# iCanBill
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This is a local-first version of the existing billing app for testing. It opens directly without a sign-in screen. Invoices, clients, products, and settings are stored in this browser and are not synchronized to other devices.
 
-Currently, two official plugins are available:
+## Workspace modes
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Choose **Retail Mode** or **Business Mode** in Settings. Both modes use the same local product catalog, invoices, clients, PDF generator, reports, and billing logic. Switching modes does not clear or separate data.
 
-## React Compiler
+- Retail Mode provides barcode/manual product lookup, bill discounts, invoice checkout, and stock tracking. USB barcode scanners that type a code and submit Enter are supported.
+- Business Mode provides customer/order workflows, invoice generation, and the existing AI purchase-order extraction flow. The separate Purchase Orders screen is currently removed.
+- Common dashboard, clients, billing, payments, and reporting screens remain available in both modes.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Retail discounts are applied to line prices before the existing GST calculation. Checkout records an invoice and its line items, stores its PDF, then deducts stock.
 
-## Expanding the Oxlint configuration
+## Run locally
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```sh
+npm install
+npm run dev
+```
+
+## Demo data
+
+Invoices, clients, products, and workspace settings are stored in this browser. Saved invoice PDFs are stored in browser IndexedDB. Clearing this site's browser storage removes the local demo data. There is no user authentication, subscription, or payment gateway in this MVP.
+
+AI extraction is still available when a Gemini API key is supplied. Purchase orders are sent to Google's Gemini service only when that feature is used.

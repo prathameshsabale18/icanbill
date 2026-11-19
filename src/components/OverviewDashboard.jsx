@@ -13,7 +13,7 @@ import {
   IndianRupee,
 } from 'lucide-react';
 
-import { supabase } from '../supabaseClient';
+import { localData } from '../localDataClient';
 
 import {
   calculateInvoiceReportTotals,
@@ -25,7 +25,7 @@ import WorkspaceSidebar from './WorkspaceSidebar';
 
 const PAGE_SIZE = 1000;
 const BILLS_PER_PAGE = 9;
-const ORDER_KEY = 'canvas_client_orders';
+const ORDER_KEY = 'billing_mvp_client_orders';
 
 const money = value =>
   `Rs. ${Number(value || 0).toLocaleString('en-IN', {
@@ -55,7 +55,8 @@ export default function OverviewDashboard({
   onNewInvoice,
   onOpenBilling,
   onNavigate,
-  activeView = 'overview'
+  activeView = 'overview',
+  workspaceMode = 'business'
 }) {
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
@@ -74,7 +75,7 @@ export default function OverviewDashboard({
       let from = 0;
 
       while (true) {
-        const { data, error } = await supabase
+        const { data, error } = await localData
           .from('invoices')
           .select(`
             id,
@@ -123,7 +124,7 @@ export default function OverviewDashboard({
         const invoiceIds = allRecords
           .slice(index, index + 100)
           .map(invoice => invoice.id);
-        const { data: items, error: itemsError } = await supabase
+        const { data: items, error: itemsError } = await localData
           .from('invoice_items')
           .select('*')
           .in('invoice_id', invoiceIds);
@@ -149,7 +150,7 @@ export default function OverviewDashboard({
           items: itemsByInvoice.get(invoice.id) || []
         }))
       );
-      const { data: clientRows } = await supabase
+      const { data: clientRows } = await localData
         .from('clients')
         .select('id, client_name');
       setClients(clientRows || []);
@@ -407,6 +408,7 @@ export default function OverviewDashboard({
         <WorkspaceSidebar
           activeView={activeView}
           onNavigate={onNavigate}
+          workspaceMode={workspaceMode}
         />
 
         {/* MAIN */}
@@ -422,7 +424,7 @@ export default function OverviewDashboard({
               <div>
                 <div className="dashboard-eyebrow">
                   <Activity size={14} />
-                  CANVASBILL
+                  ICANBILL
                 </div>
 
                 <h1>

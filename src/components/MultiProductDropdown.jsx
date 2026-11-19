@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Plus, Loader2 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { localData } from '../localDataClient';
 
 // Helper to parse rates formatted like "Nos @ 350" or "sqft @ 450"
 function parseRate(ratesStr) {
@@ -23,7 +23,7 @@ export function MultiProductDropdown({ onAddProduct }) {
     async function fetchProducts() {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await localData
           .from('products')
           .select('*')
           .order('product', { ascending: true });
@@ -31,7 +31,7 @@ export function MultiProductDropdown({ onAddProduct }) {
         if (error) throw error;
         if (data) setProducts(data);
       } catch (err) {
-        console.error('Error fetching products from Supabase:', err.message);
+        console.error('Error loading the local product catalog:', err.message);
       } finally {
         setLoading(false);
       }

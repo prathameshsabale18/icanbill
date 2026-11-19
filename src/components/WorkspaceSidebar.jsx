@@ -1,39 +1,79 @@
 import React from 'react';
-import { FileSpreadsheet, LayoutDashboard, Settings, UsersRound } from 'lucide-react';
+import {
+  FileSpreadsheet,
+  LayoutDashboard,
+  HardDrive,
+  Settings,
+  ShoppingBasket,
+  UsersRound,
+  ClipboardList,
+  WalletCards,
+  Archive,
+  FileStack,
+} from 'lucide-react';
 
-export default function WorkspaceSidebar({ activeView, onNavigate }) {
-  const items = [
+export default function WorkspaceSidebar({ activeView, onNavigate, workspaceMode = 'business' }) {
+  const commonItems = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'clients', label: 'Clients', icon: UsersRound },
     { id: 'billing', label: 'Billing', icon: FileSpreadsheet },
+    { id: 'payments', label: 'Payments', icon: WalletCards },
+    { id: 'organizer', label: 'Organizer', icon: Archive },
     { id: 'generator', label: 'Invoice Generator', icon: FileSpreadsheet },
   ];
+  const modeItems = workspaceMode === 'retail'
+    ? [{ id: 'retail', label: 'Retail billing', icon: ShoppingBasket }]
+    : [
+        { id: 'purchase-orders', label: 'Purchase orders', icon: ClipboardList },
+        { id: 'quotations', label: 'Quotations', icon: FileStack },
+      ];
+  const items = [...commonItems, ...modeItems];
 
   return (
-    <aside style={{ width: '240px', minHeight: '100%', background: '#fbfbfc', borderRight: '1px solid #e5eaf0', padding: '30px 18px', flexShrink: 0, boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '42px', padding: '0 8px' }}>
-        <div style={{ width: '42px', height: '34px', display: 'grid', placeItems: 'center', flexShrink: 0, overflow: 'hidden' }}>
-          <img src="/logo.svg" alt="Canvas Creation logo" style={{ width: '42px', height: '34px', objectFit: 'contain', transform: 'scale(2.35)' }} />
+    <aside className="workspace-sidebar">
+      <div className="workspace-sidebar-header">
+        <div className="workspace-brand-mark">
+          <img src="/logo.svg" alt="" />
         </div>
-        <div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#172033' }}>Canvas Creation</div>
-          <div style={{ fontSize: '11px', color: '#8c95a5' }}>Workspace</div>
+        <div className="workspace-brand-copy">
+          <strong>iCanBill</strong>
+          <span>Billing workspace</span>
         </div>
       </div>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: '#a0a8b6', letterSpacing: '.08em', margin: '0 8px 10px' }}>WORKSPACE</div>
-      <nav style={{ display: 'grid', gap: '5px' }}>
+      <div className="workspace-sidebar-section">Workspace</div>
+      <nav className="workspace-nav" aria-label="Workspace navigation">
         {items.map(({ id, label, icon: Icon }) => {
           const active = activeView === id;
           return (
-            <button key={id} onClick={() => onNavigate(id)} style={{ display: 'flex', alignItems: 'center', gap: '11px', width: '100%', padding: '12px 11px', border: 0, borderRadius: '8px', background: active ? '#e9edff' : 'transparent', color: active ? '#4b67d1' : '#596477', fontSize: '14px', fontWeight: active ? 700 : 500, cursor: 'pointer', textAlign: 'left' }}>
-              <Icon size={18} /> {label}
+            <button
+              key={id}
+              type="button"
+              onClick={() => onNavigate(id)}
+              className={`workspace-nav-item${active ? ' active' : ''}`}
+              aria-current={active ? 'page' : undefined}
+            >
+              <Icon size={18} strokeWidth={1.8} />
+              <span>{label}</span>
             </button>
           );
         })}
       </nav>
-      <div style={{ marginTop: 'auto', paddingTop: '30px' }}>
-        <button style={{ display: 'flex', alignItems: 'center', gap: '11px', width: '100%', padding: '12px 11px', border: 0, background: 'transparent', color: '#596477', fontSize: '14px', cursor: 'pointer', textAlign: 'left' }}>
-          <Settings size={18} /> Settings
+      <div className="workspace-sidebar-footer">
+        <div className="workspace-local-card">
+          <HardDrive size={17} />
+          <span>
+            <strong>Stored in this browser</strong>
+            <small>Your workspace data stays local</small>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate('settings')}
+          className={`workspace-nav-item${activeView === 'settings' ? ' active' : ''}`}
+          aria-current={activeView === 'settings' ? 'page' : undefined}
+        >
+          <Settings size={18} strokeWidth={1.8} />
+          <span>Settings</span>
         </button>
       </div>
     </aside>

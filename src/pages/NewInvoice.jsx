@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import InvoiceForm, { calculateItemAmount } from '../components/InvoiceForm';
-import { saveInvoiceToDatabase } from '../utils/saveInvoice';
+import { saveInvoiceLocally } from '../utils/saveInvoice';
 import { getTodayInvoiceDate } from '../utils/invoiceDates';
 import { useNavigate } from 'react-router-dom';
 
@@ -47,7 +47,7 @@ export default function NewInvoice() {
       };
 
       // 3. Save invoiceData along with docType
-      const result = await saveInvoiceToDatabase(invoiceData, items, totals);
+      const result = await saveInvoiceLocally(invoiceData, items, totals);
 
       if (result.success) {
         alert(`${invoiceData.docType === 'DC_CHALLAN' ? 'Delivery Challan' : 'Invoice'} #${result.invoiceNo} saved successfully!`);

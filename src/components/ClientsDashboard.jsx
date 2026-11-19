@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, AlertCircle, Check, Clock3, FilePlus2, FileText, PackagePlus, Plus, RefreshCw, Search, Trash2, UsersRound, X } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { localData } from '../localDataClient';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import { getInvoiceDateKey } from '../utils/invoiceDates';
 import { calculateInvoiceReportTotals } from '../utils/invoiceReportPdf';
 import { clientGroupKey, invoiceClientGst, invoiceClientName } from '../utils/clientIdentity';
 
-const ORDER_KEY = 'canvas_client_orders';
+const ORDER_KEY = 'billing_mvp_client_orders';
 const blankOrder = { clientId: '', requirement: '', quantity: '', neededBy: '', notes: '', status: 'New' };
+const blankClient = { client_name: '', email: '', phone: '', address: '', gst_no: '', state: '' };
 const money = value => `Rs. ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const readOrders = () => { try { return JSON.parse(localStorage.getItem(ORDER_KEY) || '[]'); } catch { return []; } };
 const ageInDays = value => {
@@ -30,7 +31,7 @@ const invoiceBelongsToClient = (invoice, client) => {
   return Boolean(invoiceGst && clientGst && invoiceGst === clientGst);
 };
 
-export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView = 'clients' }) {
+export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView = 'clients', workspaceMode = 'business' }) {
   const [clients, setClients] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState({});
@@ -41,13 +42,15 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
   const [orderFilter, setOrderFilter] = useState('All');
   const [paymentFilter, setPaymentFilter] = useState('Overdue');
   const [orderForm, setOrderForm] = useState(null);
+  const [clientForm, setClientForm] = useState(null);
+  const [clientSaving, setClientSaving] = useState(false);
   const [notice, setNotice] = useState('');
 
   const refresh = async () => {
     setLoading(true);
     const [{ data: clientRows }, { data: invoiceRows, error }] = await Promise.all([
-      supabase.from('clients').select('*').order('client_name', { ascending: true }),
-      supabase.from('invoices').select('*, clients(*)').order('id', { ascending: false })
+      localData.from('clients').select('*').order('client_name', { ascending: true }),
+      localData.from('invoices').select('*, clients(*)').order('id', { ascending: false })
     ]);
     if (error) setNotice(error.message);
     const known = new Set((clientRows || []).map(client => clientGroupKey(client.client_name)));
@@ -68,7 +71,7 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
     }));
     const invoiceIds = normalizedInvoices.map(invoice => invoice.id).filter(Boolean);
     const { data: itemRows } = invoiceIds.length
-      ? await supabase.from('invoice_items').select('*').in('invoice_id', invoiceIds)
+      ? await localData.from('invoice_items').select('*').in('invoice_id', invoiceIds)
       : { data: [] };
     const itemsByInvoice = (itemRows || []).reduce((result, item) => {
       (result[item.invoice_id] ||= []).push(item);
@@ -132,11 +135,51 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
     const client = clientsById.get(String(order.clientId));
     onNewInvoice(client, order);
   };
+  const saveClient = async event => {
+    event.preventDefault();
+    if (!clientForm || clientSaving) return;
+    const clientName = clientForm.client_name.trim();
+    if (!clientName) {
+      setNotice('Enter a customer name.');
+      return;
+    }
+    setClientSaving(true);
+    setNotice('');
+    const now = new Date().toISOString();
+    const result = await localData.atomic(database => {
+      if (database.clients.some(client =>
+        clientGroupKey(client.client_name) === clientGroupKey(clientName)
+      )) {
+        throw new Error('A customer with this name already exists.');
+      }
+      const id = database.clients.reduce((maximum, client) =>
+        Number.isFinite(Number(client.id)) ? Math.max(maximum, Number(client.id)) : maximum
+      , 0) + 1;
+      database.clients.push({
+        ...clientForm,
+        client_name: clientName,
+        id,
+        created_at: now,
+        updated_at: now,
+      });
+      return id;
+    });
+    if (result.error) {
+      setNotice(`Could not save customer: ${result.error.message}`);
+      setClientSaving(false);
+      return;
+    }
+    await refresh();
+    setSelectedClientId(String(result.data));
+    setClientForm(null);
+    setClientSaving(false);
+    setNotice('Customer saved.');
+  };
 
   return <>
     <style>{styles + visibilityStyles + orderStyles + detailStyles + layoutStyles}</style>
-    <div className="ops-shell"><WorkspaceSidebar activeView={activeView} onNavigate={onNavigate} /><main className="ops-main">
-      <header className="ops-header"><div><div className="ops-eyebrow"><Activity size={14} /> CANVASBILL / OPERATIONS</div><h1>{selectedClient ? selectedClient.client_name : 'Client operations'}</h1><p>{selectedClient ? 'Everything for this client, in one clear workspace.' : 'Choose a client to see its complete operating picture.'}</p></div><div className="ops-actions"><button className="ops-icon" onClick={refresh} title="Refresh"><RefreshCw size={16} /></button></div></header>
+    <div className="ops-shell"><WorkspaceSidebar activeView={activeView} onNavigate={onNavigate} workspaceMode={workspaceMode} /><main className="ops-main">
+      <header className="ops-header"><div><div className="ops-eyebrow"><Activity size={14} /> ICANBILL / OPERATIONS</div><h1>{selectedClient ? selectedClient.client_name : 'Client operations'}</h1><p>{selectedClient ? 'Everything for this client, in one clear workspace.' : 'Choose a client to see its complete operating picture.'}</p></div><div className="ops-actions"><button className="ops-secondary" onClick={() => setClientForm({ ...blankClient })}><Plus size={15} /> New customer</button><button className="ops-icon" onClick={refresh} title="Refresh"><RefreshCw size={16} /></button></div></header>
       <section className="client-switcher"><div className="switcher-icon"><UsersRound size={20} /></div><div><span>WORKING ON</span><strong>{selectedClient ? selectedClient.client_name : 'All clients'}</strong></div><select value={selectedClientId} onChange={event => setSelectedClientId(event.target.value)}><option value="all">All clients</option>{clients.map(client => <option key={client.id} value={client.id}>{client.client_name}</option>)}</select>{selectedClient && <small>{selectedClient.gst_no || 'GSTIN not added'}</small>}</section>
       {selectedClient && <section className="client-focus"><div className="client-focus-head"><div className="client-identity"><div className="client-focus-avatar">{String(selectedClient.client_name || '?').slice(0, 1).toUpperCase()}</div><div><span>CLIENT FOLLOW-UP CENTER</span><h2>{selectedClient.client_name}</h2><small>{selectedClient.gst_no || 'GSTIN not added'}{selectedClient.address ? ` · ${selectedClient.address}` : ''}</small></div></div><button className="ops-secondary" onClick={() => onNewInvoice(selectedClient)}><FilePlus2 size={15} /> Create invoice</button></div><div className="client-focus-metrics"><div><span>Pending amount</span><strong>{money(selectedPending)}</strong></div><div><span>Pending bills</span><strong>{selectedPendingCount}</strong></div><div><span>Items supplied</span><strong>{selectedClientItems.length}</strong></div><div><span>Open requirements</span><strong>{scopedOrders.filter(order => order.status !== 'Completed').length}</strong></div></div></section>}
       {notice && <div className="ops-notice">{notice}<button onClick={() => setNotice('')}><X size={14} /></button></div>}
@@ -148,6 +191,7 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
       </section>
       <section className="ops-footer"><div><UsersRound size={17} /><div><strong>Need to invoice a client?</strong><span>{selectedClient ? `Open the invoice generator for ${selectedClient.client_name}.` : 'Choose a client first to prefill the invoice.'}</span></div></div><button className="ops-secondary" onClick={() => onNewInvoice(selectedClient)}><FilePlus2 size={15} /> Create invoice</button></section>
     </main></div>
+    {clientForm && <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && !clientSaving && setClientForm(null)}><form className="ops-modal" onSubmit={saveClient}><div className="modal-head"><div><span>CUSTOMER RECORD</span><h2>Add a customer</h2></div><button type="button" disabled={clientSaving} onClick={() => setClientForm(null)} aria-label="Close"><X size={18} /></button></div><label>Customer name<input required autoFocus value={clientForm.client_name} onChange={event => setClientForm(current => ({ ...current, client_name: event.target.value }))} /></label><div className="form-two-col"><label>Email<input type="email" value={clientForm.email} onChange={event => setClientForm(current => ({ ...current, email: event.target.value }))} /></label><label>Phone<input type="tel" value={clientForm.phone} onChange={event => setClientForm(current => ({ ...current, phone: event.target.value }))} /></label></div><label>Address<textarea rows="2" value={clientForm.address} onChange={event => setClientForm(current => ({ ...current, address: event.target.value }))} /></label><div className="form-two-col"><label>GSTIN<input value={clientForm.gst_no} onChange={event => setClientForm(current => ({ ...current, gst_no: event.target.value }))} /></label><label>State<input value={clientForm.state} onChange={event => setClientForm(current => ({ ...current, state: event.target.value }))} /></label></div><div className="modal-actions"><button type="button" className="ops-secondary" disabled={clientSaving} onClick={() => setClientForm(null)}>Cancel</button><button className="ops-primary" disabled={clientSaving}><Check size={15} /> {clientSaving ? 'Saving…' : 'Save customer'}</button></div></form></div>}
     {orderForm && <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && setOrderForm(null)}><form className="ops-modal" onSubmit={saveOrder}><div className="modal-head"><div><span>{orderForm.id ? 'UPDATE REQUIREMENT' : 'NEW REQUIREMENT'}</span><h2>{orderForm.id ? 'Update order' : 'Record an order'}</h2></div><button type="button" onClick={() => setOrderForm(null)}><X size={18} /></button></div><label>Client<select required value={orderForm.clientId} onChange={event => setOrderForm({ ...orderForm, clientId: event.target.value })}><option value="">Select a client</option>{clients.map(client => <option key={client.id} value={client.id}>{client.client_name}</option>)}</select></label><label>What does the client need?<input autoFocus required value={orderForm.requirement} onChange={event => setOrderForm({ ...orderForm, requirement: event.target.value })} placeholder="e.g. 500 sliding windows, quotation, repeat order" /></label><div className="form-two-col"><label>Quantity / scope<input value={orderForm.quantity} onChange={event => setOrderForm({ ...orderForm, quantity: event.target.value })} placeholder="e.g. 500 nos" /></label><label>Needed by<input type="date" value={orderForm.neededBy} onChange={event => setOrderForm({ ...orderForm, neededBy: event.target.value })} /></label></div><label>Notes<textarea rows="3" value={orderForm.notes} onChange={event => setOrderForm({ ...orderForm, notes: event.target.value })} placeholder="Delivery details, pricing notes, or next action" /></label><div className="modal-actions"><button type="button" className="ops-secondary" onClick={() => setOrderForm(null)}>Cancel</button><button className="ops-primary"><Check size={15} /> Save requirement</button></div></form></div>}
   </>;
 }

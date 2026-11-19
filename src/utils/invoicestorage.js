@@ -3,7 +3,7 @@ import { toStoredInvoiceDate, getTodayInvoiceDate } from './invoiceDates';
 
 export function getSavedInvoices() {
   try {
-    const data = localStorage.getItem('canvas_invoice_history');
+    const data = localStorage.getItem('billing_mvp_invoice_history');
     return data ? JSON.parse(data) : [];
   } catch {
     return [];
@@ -24,6 +24,6 @@ export function saveInvoiceRecord(invoiceData, totals) {
 
   const filtered = invoices.filter(inv => inv.id !== record.id);
   const updated = [record, ...filtered];
-  localStorage.setItem('canvas_invoice_history', JSON.stringify(updated));
+  localStorage.setItem('billing_mvp_invoice_history', JSON.stringify(updated));
   return updated;
 }

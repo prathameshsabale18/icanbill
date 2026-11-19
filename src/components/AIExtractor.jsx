@@ -7,13 +7,13 @@ export default function AIExtractor({ onExtractedData }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [apiKey, setApiKey] = useState(
-    () => localStorage.getItem('canvas_creation_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY || ''
+    () => localStorage.getItem('billing_mvp_gemini_key') || ''
   );
   const fileInputRef = useRef(null);
 
   const saveKey = (key) => {
     setApiKey(key);
-    if (key) localStorage.setItem('canvas_creation_gemini_key', key);
+    if (key) localStorage.setItem('billing_mvp_gemini_key', key);
   };
 
   const processFile = async (file) => {
@@ -99,7 +99,7 @@ export default function AIExtractor({ onExtractedData }) {
 
     const lastErrorMessage = lastError?.message || '';
     if (lastErrorMessage.includes('reported as leaked') || lastErrorMessage.includes('PERMISSION_DENIED')) {
-      localStorage.removeItem('canvas_creation_gemini_key');
+      localStorage.removeItem('billing_mvp_gemini_key');
       setApiKey('');
       setError('This Gemini API key was revoked because it was reported as leaked. Enter a new Gemini API key.');
     } else {

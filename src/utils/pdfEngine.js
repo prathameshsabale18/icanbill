@@ -214,7 +214,7 @@ export async function generatePDFBytes(invoiceData, totals, mode = 'invoice') {
 
 export async function downloadInvoicePDF(invoiceData, totals, mode = 'invoice') {
   const bytes    = await buildPDF(invoiceData, totals, mode);
-  const filename = `CC-${mode === 'challan' ? 'Challan' : 'Invoice'}-${invoiceData.invoiceNo || 'DRAFT'}.pdf`;
+  const filename = `iCanBill-${mode === 'challan' ? 'Challan' : 'Invoice'}-${invoiceData.invoiceNo || 'DRAFT'}.pdf`;
   download(bytes, filename, 'application/pdf');
 }
 

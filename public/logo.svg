@@ -1,6 +1,7 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3.62205 2.04724" role="img" aria-labelledby="logoTitle">
-  <title id="logoTitle">Canvas Creation logo</title>
-  <path fill="#5CC6D0" d="M1.30888 0.472409h0.891205c0.05537 0 0.10178 0.039819 0.111283 0.091866h-0.796091c-0.064051 0-0.116453 0.041831-0.116453 0.092961v0.732776c0 0.05113 0.052402 0.092953 0.116453 0.092953h0.796091c-0.009488 0.052055-0.055913 0.091866-0.111283 0.091866h-0.891205c-0.062181 0-0.113063-0.050193-0.113063-0.111555v-0.879319c0-0.061342 0.050882-0.111547 0.113063-0.111547z"/>
-  <path fill="#A0B848" d="M1.7172 0.688972h0.629209c0.043902 0 0.079819 0.030476 0.079819 0.067724v0.533854c0 0.037248-0.035917 0.067728-0.079819 0.067728h-0.629209c-0.043898 0-0.079827-0.03048-0.079827-0.067728v-0.533854c0-0.037248 0.035929-0.067724 0.079827-0.067724z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="logoTitle">
+  <title id="logoTitle">iCanBill</title>
+  <rect width="48" height="48" rx="14" fill="#075a50"/>
+  <path d="M15 10.5h18v27l-4.5-2.8-4.5 2.8-4.5-2.8-4.5 2.8v-27Z" fill="#f3fffc"/>
+  <path d="M20 18h8M20 23h8" stroke="#1ba5b8" stroke-linecap="round" stroke-width="2.4"/>
+  <path d="m20 29 2.5 2.5 5.5-5.5" fill="none" stroke="#8cc63f" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.8"/>
 </svg>
