@@ -1,6 +1,6 @@
 # iCanBill
 
-This is a local-first version of the existing billing app for testing. It opens directly without a sign-in screen. Invoices, clients, products, and settings are stored in this browser and are not synchronized to other devices.
+This is an MVP of the iCanBill billing app. Supabase email/password authentication gates access, but invoices, clients, products, and settings are currently stored in the signed-in browser and are not synchronized to other devices.
 
 ## Workspace modes
 
@@ -21,6 +21,26 @@ npm run dev
 
 ## Demo data
 
-Invoices, clients, products, and workspace settings are stored in this browser. Saved invoice PDFs are stored in browser IndexedDB. Clearing this site's browser storage removes the local demo data. There is no user authentication, subscription, or payment gateway in this MVP.
+Invoices, clients, products, and workspace settings are stored in this browser. Saved invoice PDFs are stored in browser IndexedDB. Clearing this site's browser storage removes the local demo data. There is no subscription or payment gateway in this MVP, and billing data is not yet persisted in Supabase.
 
-AI extraction is still available when a Gemini API key is supplied. Purchase orders are sent to Google's Gemini service only when that feature is used.
+Purchase-order extraction uses the authenticated Supabase Edge Function in `supabase/functions/extract-purchase-order`. Configure `GEMINI_API_KEY` as a Supabase Edge Function secret; users do not enter or store a Gemini key in their browser.
+
+Deploy the function with the Supabase CLI after linking this project, and set the Gemini key as a project secret (Supabase Dashboard → Edge Functions → Secrets):
+
+```sh
+npx supabase link --project-ref ekpwirjqylynzhrrslyx
+npx supabase functions deploy extract-purchase-order
+```
+
+Do not put the Gemini key in `.env.local` or share it in chat. The deployed function requires a signed-in user JWT.
+
+## Supabase authentication
+
+The app is gated by Supabase email/password authentication. Browser configuration is stored in `.env.local`:
+
+```text
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-browser-safe-publishable-key
+```
+
+Apply `supabase/migrations/20261126000000_multi_tenant_foundation.sql` from the Supabase SQL Editor to create organizations, memberships, profiles, tenant tables, and row-level security policies. This is the database foundation; the existing billing screens still use browser storage until their data adapter is migrated.

@@ -63,7 +63,7 @@ export default function WorkspaceSidebar({ activeView, onNavigate, workspaceMode
           <HardDrive size={17} />
           <span>
             <strong>Stored in this browser</strong>
-            <small>Your workspace data stays local</small>
+            <small>Billing data is not synced yet</small>
           </span>
         </div>
         <button

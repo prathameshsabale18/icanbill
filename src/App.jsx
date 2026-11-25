@@ -19,6 +19,8 @@ import { saveInvoicePdf } from './utils/invoicePdfStorage';
 import { getTodayInvoiceDate } from './utils/invoiceDates';
 import { localData } from './localDataClient';
 import download from 'downloadjs';
+import AuthGate from './components/AuthGate';
+import { supabase } from './supabaseClient';
 import {
   Download,
   FileText,
@@ -574,8 +576,16 @@ function InvoiceWorkspace() {
         <div className="workspace-topbar-actions">
           <span className="workspace-topbar-local">
             <span />
-            Local workspace
+            Signed-in workspace
           </span>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => supabase.auth.signOut()}
+            style={{ borderRadius: '9px', padding: '9px 14px' }}
+          >
+            Sign out
+          </button>
           {activeTab === 'generator' && (
             <button
               className="btn btn-sm"
@@ -1168,5 +1178,9 @@ function InvoiceWorkspace() {
 }
 
 export default function App() {
-  return <InvoiceWorkspace />;
+  return (
+    <AuthGate>
+      <InvoiceWorkspace />
+    </AuthGate>
+  );
 }
