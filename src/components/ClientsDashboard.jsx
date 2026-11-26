@@ -6,11 +6,9 @@ import { getInvoiceDateKey } from '../utils/invoiceDates';
 import { calculateInvoiceReportTotals } from '../utils/invoiceReportPdf';
 import { clientGroupKey, invoiceClientGst, invoiceClientName } from '../utils/clientIdentity';
 
-const ORDER_KEY = 'billing_mvp_client_orders';
 const blankOrder = { clientId: '', requirement: '', quantity: '', neededBy: '', notes: '', status: 'New' };
 const blankClient = { client_name: '', email: '', phone: '', address: '', gst_no: '', state: '' };
 const money = value => `Rs. ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const readOrders = () => { try { return JSON.parse(localStorage.getItem(ORDER_KEY) || '[]'); } catch { return []; } };
 const ageInDays = value => {
   const dateKey = getInvoiceDateKey(value);
   if (!dateKey) return null;
@@ -35,7 +33,7 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
   const [clients, setClients] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState({});
-  const [orders, setOrders] = useState(readOrders);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedClientId, setSelectedClientId] = useState('all');
   const [search, setSearch] = useState('');
@@ -48,11 +46,13 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
 
   const refresh = async () => {
     setLoading(true);
-    const [{ data: clientRows }, { data: invoiceRows, error }] = await Promise.all([
+    const [{ data: clientRows }, { data: invoiceRows, error }, { data: orderRows, error: orderError }] = await Promise.all([
       localData.from('clients').select('*').order('client_name', { ascending: true }),
-      localData.from('invoices').select('*, clients(*)').order('id', { ascending: false })
+      localData.from('invoices').select('*, clients(*)').order('id', { ascending: false }),
+      localData.from('orders').select('*').order('created_at', { ascending: false }),
     ]);
     if (error) setNotice(error.message);
+    if (orderError) setNotice(orderError.message);
     const known = new Set((clientRows || []).map(client => clientGroupKey(client.client_name)));
     const invoiceClients = (invoiceRows || []).reduce((result, invoice) => {
       const name = invoiceClientName(invoice);
@@ -84,10 +84,11 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
     });
     setClients([...mergedClients.values()]);
     setInvoices(normalizedInvoices.map(invoice => ({ ...invoice, items: itemsByInvoice[invoice.id] || [] })));
-    setInvoiceItems(itemsByInvoice); setLoading(false);
+    setInvoiceItems(itemsByInvoice);
+    setOrders(orderRows || []);
+    setLoading(false);
   };
   useEffect(() => { refresh(); }, []);
-  useEffect(() => { localStorage.setItem(ORDER_KEY, JSON.stringify(orders)); }, [orders]);
 
   const clientsById = useMemo(() => new Map(clients.map(client => [String(client.id), client])), [clients]);
   const selectedClient = selectedClientId === 'all' ? null : clientsById.get(String(selectedClientId));
@@ -117,17 +118,69 @@ export default function ClientsDashboard({ onNavigate, onNewInvoice, activeView 
     const status = String(invoice.status || '').toLowerCase();
     return !['paid', 'successful'].includes(status);
   }).length, [scopedInvoices]);
-  const saveOrder = event => {
+  const saveOrder = async event => {
     event.preventDefault();
     if (!orderForm.clientId || !orderForm.requirement.trim()) return;
-    const next = { ...orderForm, id: orderForm.id || crypto.randomUUID(), createdAt: orderForm.createdAt || new Date().toISOString() };
-    setOrders(current => orderForm.id ? current.map(item => item.id === orderForm.id ? next : item) : [next, ...current]);
-    setOrderForm(null); setNotice(orderForm.id ? 'Requirement updated.' : 'New requirement recorded.');
+    const now = new Date().toISOString();
+    const result = await localData.atomic(database => {
+      const current = orderForm.id
+        ? database.orders.find(item => String(item.id) === String(orderForm.id))
+        : null;
+      if (orderForm.id && !current) {
+        throw new Error('This requirement no longer exists. Refresh and try again.');
+      }
+      const id = current
+        ? current.id
+        : database.orders.reduce((maximum, item) =>
+          Number.isFinite(Number(item.id)) ? Math.max(maximum, Number(item.id)) : maximum
+        , 0) + 1;
+      const next = {
+        ...current,
+        ...orderForm,
+        id,
+        createdAt: orderForm.createdAt || now,
+        created_at: current?.created_at || now,
+        updated_at: now,
+      };
+      if (current) {
+        database.orders = database.orders.map(item =>
+          String(item.id) === String(id) ? next : item
+        );
+      } else {
+        database.orders.unshift(next);
+      }
+      return next;
+    });
+    if (result.error) {
+      setNotice(`Could not save requirement: ${result.error.message}`);
+      return;
+    }
+    setOrders(current => orderForm.id
+      ? current.map(item => String(item.id) === String(orderForm.id) ? result.data : item)
+      : [result.data, ...current]);
+    setOrderForm(null);
+    setNotice(orderForm.id ? 'Requirement updated.' : 'New requirement recorded.');
   };
-  const updateOrderStatus = (id, status) => setOrders(current => current.map(item => item.id === id ? { ...item, status } : item));
+  const updateOrderStatus = async (id, status) => {
+    const { error: updateError } = await localData.from('orders')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (updateError) {
+      setNotice(`Could not update requirement: ${updateError.message}`);
+      return;
+    }
+    setOrders(current => current.map(item =>
+      String(item.id) === String(id) ? { ...item, status } : item
+    ));
+  };
   const openOrderForm = () => setOrderForm({ ...blankOrder, clientId: selectedClient?.id || '' });
-  const deleteOrder = order => {
+  const deleteOrder = async order => {
     if (!window.confirm(`Delete the requirement “${order.requirement}”?`)) return;
+    const { error: deleteError } = await localData.from('orders').delete().eq('id', order.id);
+    if (deleteError) {
+      setNotice(`Could not delete requirement: ${deleteError.message}`);
+      return;
+    }
     setOrders(current => current.filter(item => item.id !== order.id));
     setNotice('Requirement deleted.');
   };

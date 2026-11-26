@@ -49,6 +49,42 @@ Deno.serve(async request => {
   }
 
   try {
+    const authorization = request.headers.get('Authorization');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!authorization) {
+      return jsonResponse({ error: 'Sign in before using purchase order extraction.' }, 401);
+    }
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return jsonResponse({ error: 'Purchase order extraction is not configured.' }, 503);
+    }
+
+    const accessResponse = await fetch(
+      `${supabaseUrl}/rest/v1/rpc/get_subscription_status`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: authorization,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      }
+    );
+    if (!accessResponse.ok) {
+      return jsonResponse(
+        { error: 'Could not verify your iCanBill subscription. Sign in again and retry.' },
+        403
+      );
+    }
+    const subscription = await accessResponse.json();
+    if (!subscription?.active) {
+      return jsonResponse(
+        { error: 'An active iCanBill subscription is required for purchase order extraction.' },
+        403
+      );
+    }
+
     const body = await request.json();
     const mimeType = body?.mimeType;
     const data = body?.data;
@@ -63,38 +99,57 @@ Deno.serve(async request => {
     }
 
     const fileType = mimeType === 'application/pdf' ? 'PDF' : 'JPG';
-    const geminiResponse = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              {
-                text: `You are a data extractor. From this purchase order ${fileType}, extract ONLY the requested fields as compact JSON. Keep string values under 100 characters. Do not include an explanation.`,
-              },
-              { inline_data: { mime_type: mimeType, data } },
-            ],
-          }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema,
-            maxOutputTokens: 8192,
+    const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+    const requestBody = JSON.stringify({
+      contents: [{
+        parts: [
+          {
+            text: `You are a data extractor. From this purchase order ${fileType}, extract ONLY the requested fields as compact JSON. Keep string values under 100 characters. Do not include an explanation.`,
           },
-        }),
-      }
-    );
+          { inline_data: { mime_type: mimeType, data } },
+        ],
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema,
+        maxOutputTokens: 8192,
+      },
+    });
 
-    if (!geminiResponse.ok) {
-      const upstreamError = await geminiResponse.json().catch(() => null);
+    let geminiResponse: Response | null = null;
+    for (const model of models) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: requestBody,
+        }
+      );
+
+      if (response.ok) {
+        geminiResponse = response;
+        break;
+      }
+
+      const upstreamError = await response.json().catch(() => null);
       const message = upstreamError?.error?.message;
+      if (response.status !== 429 && response.status < 500) {
+        return jsonResponse(
+          { error: typeof message === 'string' ? message : 'Gemini could not process this document.' },
+          502
+        );
+      }
+      console.warn(`Gemini model ${model} is temporarily unavailable (${response.status}); trying fallback.`);
+    }
+
+    if (!geminiResponse) {
       return jsonResponse(
-        { error: typeof message === 'string' ? message : 'Gemini could not process this document.' },
-        502
+        { error: 'Gemini is temporarily busy. Please retry in a little while.' },
+        503
       );
     }
 

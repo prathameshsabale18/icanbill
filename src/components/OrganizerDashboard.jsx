@@ -3,7 +3,6 @@ import { Archive, FileText, Search } from 'lucide-react';
 import { localData } from '../localDataClient';
 import WorkspaceSidebar from './WorkspaceSidebar';
 
-const ORDER_KEY = 'billing_mvp_client_orders';
 const FILTERS = ['All', 'Invoices', 'Purchase orders', 'Quotations', 'Customers', 'Documents', 'Requirements'];
 
 export default function OrganizerDashboard({ onNavigate, workspaceMode }) {
@@ -22,17 +21,12 @@ export default function OrganizerDashboard({ onNavigate, workspaceMode }) {
         localData.from('quotations').select('*'),
         localData.from('clients').select('*'),
         localData.from('documents').select('*'),
+        localData.from('orders').select('*'),
       ]);
       const failed = results.find(result => result.error);
       if (failed) throw new Error(failed.error.message);
-      const [invoices, purchaseOrders, quotations, clients, documents] = results.map(result => result.data || []);
-      let requirements = [];
-      try {
-        const stored = JSON.parse(localStorage.getItem(ORDER_KEY) || '[]');
-        if (Array.isArray(stored)) requirements = stored;
-      } catch {
-        throw new Error('Stored requirements are not valid JSON.');
-      }
+      const [invoices, purchaseOrders, quotations, clients, documents, requirements] =
+        results.map(result => result.data || []);
       const rows = [
         ...invoices.map(row => ({
           id: `invoice-${row.id}`, kind: 'Invoices', title: row.invoice_no || `Invoice #${row.id}`,
@@ -62,7 +56,7 @@ export default function OrganizerDashboard({ onNavigate, workspaceMode }) {
         ...requirements.map(row => ({
           id: `requirement-${row.id}`, kind: 'Requirements', title: row.requirement || 'Requirement',
           detail: row.notes || row.status || 'Business requirement',
-          date: row.createdAt, navigate: 'clients',
+          date: row.createdAt || row.created_at, navigate: 'clients',
         })),
       ];
       rows.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')));

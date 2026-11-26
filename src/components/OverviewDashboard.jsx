@@ -25,21 +25,12 @@ import WorkspaceSidebar from './WorkspaceSidebar';
 
 const PAGE_SIZE = 1000;
 const BILLS_PER_PAGE = 9;
-const ORDER_KEY = 'billing_mvp_client_orders';
 
 const money = value =>
   `Rs. ${Number(value || 0).toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
-
-const readOrders = () => {
-  try {
-    return JSON.parse(localStorage.getItem(ORDER_KEY) || '[]');
-  } catch {
-    return [];
-  }
-};
 
 const ageInDays = value => {
   const dateKey = getInvoiceDateKey(value);
@@ -60,7 +51,7 @@ export default function OverviewDashboard({
 }) {
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
-  const [orders, setOrders] = useState(readOrders);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [chartFilter, setChartFilter] = useState('paid-pending');
@@ -154,7 +145,11 @@ export default function OverviewDashboard({
         .from('clients')
         .select('id, client_name');
       setClients(clientRows || []);
-      setOrders(readOrders());
+      const { data: requirementRows, error: requirementsError } = await localData
+        .from('orders')
+        .select('*');
+      if (requirementsError) throw new Error(requirementsError.message);
+      setOrders(requirementRows || []);
     } catch (error) {
       console.error(
         'Dashboard fetch exception:',
