@@ -7,43 +7,24 @@ const px = (lp) => (lp / 100) * W;
 const py = (tp) => H - (tp / 100) * H;
 
 const C = {
-  invoiceNo: [66.5, 21.2],
-  invoiceDate: [85.0, 21.2],
+  invoiceNo: [66.9, 19.1],
+  invoiceDate: [82.8, 19.1],
 
-  clientName: [6.5, 22.9],
-  clientAddress: [6.5, 24.4],
-  clientGstin: [67.0, 23.3],
+  clientName: [6.55, 22.9],
+  clientAddress: [6.55, 24.4],
+  clientGstin: [66.7, 23.3],
 
-  clientState: [7, 27.6],
-  clientStateCode: [36, 27.6],
+  clientState: [6.55, 27.6],
+  clientStateCode: [34.4, 27.6],
 
-  poNo: [67.0, 25.3],
-  poDate: [80.0, 26],
-  vendorCode: [69.0, 27.2],
+  poNo: [66.7, 25.3],
+  poDate: [78.8, 25.3],
+  vendorCode: [66.7, 27.2],
+  itemRowH: 3.06,
 
-  itemStartTop: 35,
-  itemRowH: 3.2,
+  words: [6.55, 64.7],
 
-  col: {
-    srCenter: 9,
-    srWidth: 7.9,
-    desc: 13,
-    hsn: 48.5,
-    hsnCenter: 51.75,
-    hsnWidth: 7.7,
-    qtyCenter: 59.3,
-    qtyWidth: 7.4,
-    rateCenter: 67.0,
-    rateWidth: 8.0,
-    perCenter: 75.65,
-    perWidth: 9.3,
-    amtCenter: 88.25,
-    amtWidth: 15.9
-  },
-
-  words: [4.5, 64.7],
-
-  totX: 90.0,
+  totX: 93.3,
   totAV: 63.6,
   totFreight: 65.7,
   totST: 69,
@@ -54,23 +35,23 @@ const C = {
 };
 
 const MASTER_COL = {
-  srCenter: 7,
-  srWidth: 7,
-  desc: 12,
-  hsn: 49,
-  hsnCenter: 53.8,
-  hsnWidth: 8.8,
-  qtyCenter: 71.5,
-  qtyWidth: 7.4,
-  rateCenter: 78,
-  rateWidth: 7.6,
-  perCenter: 63.4,
-  perWidth: 8.6,
-  amtCenter: 89,
-  amtWidth: 14.4
+  srCenter: 8.73,
+  srWidth: 6.72,
+  desc: 13.1,
+  hsn: 47.54,
+  hsnCenter: 53.42,
+  hsnWidth: 11.76,
+  qtyCenter: 69.63,
+  qtyWidth: 6.89,
+  rateCenter: 76.6,
+  rateWidth: 7.05,
+  perCenter: 62.74,
+  perWidth: 6.89,
+  amtCenter: 87.38,
+  amtWidth: 14.45
 };
 
-const MASTER_ITEM_START_TOP = 35;
+const MASTER_ITEM_START_TOP = 34;
 
 function cleanText(input) {
   if (input === null || input === undefined) {
@@ -301,7 +282,7 @@ export async function stampInvoice(
   ).toLowerCase();
 
   let templatePath =
-    '/templates/invoice-master.pdf';
+    'templates/invoice-master.pdf';
 
   let isChallan = false;
 
@@ -309,21 +290,21 @@ export async function stampInvoice(
     selectedType.includes('challan')
   ) {
     templatePath =
-      '/templates/delivery-challan.pdf';
+      'templates/delivery-challan.pdf';
 
     isChallan = true;
   } else if (
     selectedType.includes('office')
   ) {
     templatePath =
-      '/templates/invoice-office-copy.pdf';
+      'templates/invoice-office-copy.pdf';
 
     isChallan = false;
   } else {
     templatePath =
       templateVariant === 'print'
-        ? '/templates/invoice-master-print.pdf'
-        : '/templates/invoice-master.pdf';
+        ? 'templates/invoice-master-print.pdf'
+        : 'templates/invoice-master.pdf';
 
     isChallan = false;
   }
@@ -339,89 +320,43 @@ export async function stampInvoice(
   const pdfDoc =
     await PDFDocument.create();
 
-  let templateLoaded = false;
-
-  const cacheBustedUrl =
-    `${templatePath}?v=${Date.now()}`;
+  const baseUrl = new URL(
+    import.meta.env.BASE_URL,
+    window.location.origin
+  );
+  const templateUrl = new URL(templatePath, baseUrl);
+  templateUrl.searchParams.set('v', Date.now());
 
   try {
     const res =
-      await fetch(cacheBustedUrl);
+      await fetch(templateUrl);
 
-    if (res.ok) {
-      const bytes =
-        await res.arrayBuffer();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
 
-      const templateDoc =
-        await PDFDocument.load(bytes);
+    const bytes =
+      await res.arrayBuffer();
 
-      const [tplPage] =
-        await pdfDoc.copyPages(
-          templateDoc,
-          [0]
-        );
+    const templateDoc =
+      await PDFDocument.load(bytes);
 
-      pdfDoc.addPage(tplPage);
-
-      templateLoaded = true;
-    } else {
-      console.error(
-        `[stampInvoice] Failed to fetch template at ${cacheBustedUrl}: Status ${res.status}`
+    const [tplPage] =
+      await pdfDoc.copyPages(
+        templateDoc,
+        [0]
       );
-    }
+
+    pdfDoc.addPage(tplPage);
   } catch (err) {
-    console.error(
-      `[stampInvoice] Error loading template ${cacheBustedUrl}:`,
-      err
+    console.error(`[stampInvoice] Failed to load template ${templateUrl}:`, err);
+    throw new Error(
+      'Could not load the invoice template. Refresh the app and try again.'
     );
-  }
-
-  /* ==========================================================
-     FALLBACK
-  ========================================================== */
-
-  if (!templateLoaded) {
-    const page =
-      pdfDoc.addPage([
-        595.28,
-        841.89
-      ]);
-
-    try {
-      const res =
-        await fetch(
-          `/template.jpg?v=${Date.now()}`
-        );
-
-      if (res.ok) {
-        const bytes =
-          await res.arrayBuffer();
-
-        const img =
-          await pdfDoc.embedJpg(bytes);
-
-        page.drawImage(img, {
-          x: 0,
-          y: 0,
-          width: 595.28,
-          height: 841.89
-        });
-      }
-    } catch {
-      // Blank page fallback
-    }
   }
 
   const activePage =
     pdfDoc.getPages()[0];
-
-  // Office and print-ready master templates place their printed labels 1.1 pt
-  // to the right and 7.3 pt higher than the standard master template.
-  const usesShiftedTemplate =
-    !isChallan &&
-    (selectedType.includes('office') || templateVariant === 'print');
-  const overlayShiftX = usesShiftedTemplate ? 1.1 : 0;
-  const overlayShiftY = usesShiftedTemplate ? 7.3 : 0;
 
   /* ==========================================================
      FONTS
@@ -490,8 +425,8 @@ export async function stampInvoice(
     activePage.drawText(
       sanitized,
       {
-        x: finalX + overlayShiftX,
-        y: y + overlayShiftY,
+        x: finalX,
+        y,
         size,
         font,
         color
@@ -981,11 +916,32 @@ export async function stampInvoice(
   );
 
   draw(
+    client.state,
+    px(C.clientState[0]),
+    py(C.clientState[1]),
+    8.5
+  );
+
+  draw(
+    client.stateCode,
+    px(C.clientStateCode[0]),
+    py(C.clientStateCode[1]),
+    8.5
+  );
+
+  draw(
     invoiceData.poNo,
     px(C.poNo[0]),
     py(C.poNo[1]),
     10,
     true
+  );
+
+  draw(
+    invoiceData.poDate,
+    px(C.poDate[0]),
+    py(C.poDate[1]),
+    8.5
   );
 
   /* ==========================================================
@@ -1195,8 +1151,8 @@ export async function stampInvoice(
   if (grandTotal > 0) {
     const grandTotalY =
       isChallan
-        ? 72
-        : 80.5;
+        ? 72.8
+        : 81.1;
 
     draw(
       grandTotal.toFixed(2),

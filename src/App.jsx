@@ -82,6 +82,7 @@ function InvoiceWorkspace() {
 
   const isChallan = false;
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewError, setPreviewError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -99,6 +100,7 @@ function InvoiceWorkspace() {
   const [error, setError] = useState(null);
 
   const prevUrlRef = useRef(null);
+  const previewRequestRef = useRef(0);
 
   const navigateToTab = (tab) => {
     setActiveTab(tab);
@@ -350,33 +352,53 @@ function InvoiceWorkspace() {
   ]);
 
   const handlePreview = async () => {
+    const requestId = ++previewRequestRef.current;
     setIsGenerating(true);
     setError(null);
+    setPreviewError('');
+    setPreviewUrl(null);
+    setShowModal(true);
+
+    if (prevUrlRef.current) {
+      URL.revokeObjectURL(prevUrlRef.current);
+      prevUrlRef.current = null;
+    }
 
     try {
       const blob = await generateOutput();
 
-      const url = URL.createObjectURL(blob);
+      if (requestId !== previewRequestRef.current) return;
 
-      if (prevUrlRef.current) {
-        URL.revokeObjectURL(prevUrlRef.current);
-      }
+      const url = URL.createObjectURL(blob);
 
       prevUrlRef.current = url;
 
       setPreviewUrl(url);
-      setShowModal(true);
 
     } catch (err) {
-      setError(err.message);
+      if (requestId !== previewRequestRef.current) return;
+
+      const message = err?.message || 'Could not generate the invoice preview.';
+      setError(message);
+      setPreviewError(message);
 
     } finally {
-      setIsGenerating(false);
+      if (requestId === previewRequestRef.current) {
+        setIsGenerating(false);
+      }
     }
   };
 
   const closeModal = () => {
+    previewRequestRef.current += 1;
+    setIsGenerating(false);
     setShowModal(false);
+    setPreviewUrl(null);
+    setPreviewError('');
+    if (prevUrlRef.current) {
+      URL.revokeObjectURL(prevUrlRef.current);
+      prevUrlRef.current = null;
+    }
   };
 
   // ---------------------------------------------------------
@@ -1005,6 +1027,7 @@ function InvoiceWorkspace() {
 
             {/* PREVIEW */}
             <button
+              type="button"
               className="btn btn-outline"
               onClick={handlePreview}
               disabled={
@@ -1123,7 +1146,11 @@ function InvoiceWorkspace() {
 
             <div className="modal-body">
 
-              {previewUrl ? (
+              {previewError ? (
+                <div className="modal-loading" role="alert">
+                  {previewError}
+                </div>
+              ) : previewUrl ? (
 
                 selectedFormat === 'jpg' ? (
 
