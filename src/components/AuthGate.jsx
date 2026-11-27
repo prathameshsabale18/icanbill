@@ -172,7 +172,7 @@ export default function AuthGate({ children }) {
       }
 
       if (!activationCode.trim()) {
-        throw new Error('Enter the activation code provided after your payment.');
+        throw new Error('invalid activation key');
       }
       const { error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
@@ -181,7 +181,11 @@ export default function AuthGate({ children }) {
           data: { activation_code: activationCode.trim() },
         },
       });
-      if (signUpError) throw signUpError;
+      if (signUpError) {
+        const isInvalidActivationKey = signUpError.message === 'Database error saving new user'
+          || /activation code/i.test(signUpError.message);
+        throw new Error(isInvalidActivationKey ? 'invalid activation key' : signUpError.message);
+      }
       setMode('sign-in');
       setPassword('');
       setActivationCode('');
